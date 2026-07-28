@@ -5,6 +5,35 @@ from langchain_core.messages import HumanMessage
 from app.scenario_parser import Scenario
 from app.evaluator import evaluate_scenario_result
 
+
+def _content_to_text(content) -> str:
+    """문자열 또는 멀티모달 메시지 content를 평가용 텍스트로 정규화합니다."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    return str(content) if content is not None else ""
+
+
+def _last_message_text(output) -> str:
+    """LangGraph 루트 출력 상태에서 마지막 유효 메시지 텍스트를 찾습니다."""
+    if not isinstance(output, dict):
+        return ""
+
+    messages = output.get("messages", [])
+    for message in reversed(messages):
+        content = getattr(message, "content", None)
+        if content is None and isinstance(message, dict):
+            content = message.get("content")
+        text = _content_to_text(content).strip()
+        if text:
+            return text
+    return ""
+
+
 def setup_scenario_context(scenario_file: str, project_root: str, prefix: str):
     """
     시나리오 파일 및 결과/로그 출력 경로를 초기화합니다.
@@ -41,6 +70,7 @@ async def stream_agent_execution(
         "recursion_limit": recursion_limit,
     }
     final_message = ""
+    last_model_message = ""
 
     async for event in agent.astream_events(
         {"messages": [HumanMessage(content=mission_prompt)]},
@@ -64,11 +94,7 @@ async def stream_agent_execution(
             
             chunk = event["data"].get("chunk")
             if chunk and getattr(chunk, "content", None):
-                raw_content = chunk.content
-                if isinstance(raw_content, list):
-                    content_str = "".join([c.get("text", "") if isinstance(c, dict) else str(c) for c in raw_content])
-                else:
-                    content_str = str(raw_content)
+                content_str = _content_to_text(chunk.content)
                     
                 if content_str:
                     sys.stdout.write(content_str)
@@ -79,12 +105,19 @@ async def stream_agent_execution(
         elif kind == "on_chat_model_end":
             output = event["data"].get("output")
             if output and hasattr(output, "content"):
-                final_message = output.content
+                content_str = _content_to_text(output.content).strip()
+                if content_str:
+                    last_model_message = content_str
                 print()
                 with open(log_output_path, "a", encoding="utf-8") as f:
                     f.write("\n\n---\n")
 
-    return final_message
+        elif kind == "on_chain_end" and not event.get("parent_ids"):
+            root_message = _last_message_text(event["data"].get("output"))
+            if root_message:
+                final_message = root_message
+
+    return final_message or last_model_message
 
 async def evaluate_and_log(scenario: Scenario, json_output_path: str, final_message: str, log_output_path: str):
     """
