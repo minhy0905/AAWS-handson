@@ -35,29 +35,47 @@ agent_options = {a["name"]: a["description"] for a in AGENT_REGISTRY}
 
 
 # --- Helpers ---
+SANDBOX_IMAGE_PATTERN = re.compile(
+    r"!\[[^\]]*\]\((sandbox:/[^)]+)\)"
+)
+
+
+def sanitize_streaming_content(content):
+    """스트리밍 중 sandbox URL이 브라우저로 전달되지 않도록 치환합니다."""
+    return SANDBOX_IMAGE_PATTERN.sub("🖼️ 이미지 렌더링 준비 중...", content)
+
+
 def render_message_content(content):
     """
-    텍스트 내의 <Render_Image> 태그를 파싱하여
+    <Render_Image> 태그와 sandbox 로컬 이미지 문법을 파싱하여
     텍스트와 이미지를 순서대로 렌더링합니다.
     """
-    # 이미지 태그 패턴: <Render_Image>경로</Render_Image>
-    pattern = re.compile(r"<Render_Image>(.*?)</Render_Image>")
-    
-    # 태그를 기준으로 텍스트를 분할 (split하면 텍스트와 경로가 번갈아 나옴)
-    parts = pattern.split(content)
-    
-    for i, part in enumerate(parts):
-        # 짝수 인덱스는 일반 텍스트, 홀수 인덱스는 이미지 경로
-        if i % 2 == 0:
-            if part.strip():
-                st.markdown(part)
+    pattern = re.compile(
+        r"<Render_Image>(.*?)</Render_Image>"
+        rf"|{SANDBOX_IMAGE_PATTERN.pattern}",
+        re.DOTALL,
+    )
+
+    cursor = 0
+    for match in pattern.finditer(content):
+        text_part = content[cursor:match.start()]
+        if text_part.strip():
+            st.markdown(text_part)
+
+        image_path = (match.group(1) or match.group(2) or "").strip()
+        if image_path.startswith("sandbox:"):
+            image_path = image_path[len("sandbox:"):]
+
+        if os.path.isfile(image_path):
+            st.image(image_path, caption=os.path.basename(image_path))
         else:
-            # 이미지 경로
-            image_path = part.strip()
-            if os.path.exists(image_path):
-                st.image(image_path, caption=os.path.basename(image_path))
-            else:
-                st.error(f"Image not found: {image_path}")
+            st.error(f"Image not found: {image_path}")
+
+        cursor = match.end()
+
+    remaining_text = content[cursor:]
+    if remaining_text.strip():
+        st.markdown(remaining_text)
 
 
 # --- Initialize Session State ---
@@ -177,7 +195,9 @@ if st.session_state.pending_prompt and st.session_state.generating:
                     full_response += content
                     # 스트리밍 중단 시 부분 응답 보존을 위해 세션에 저장
                     st.session_state.partial_response = full_response
-                    message_placeholder.markdown(full_response + "▌")
+                    message_placeholder.markdown(
+                        sanitize_streaming_content(full_response) + "▌"
+                    )
                 
                 # --- 도구 시작: 스피너 + 검색 쿼리 표시 ---
                 elif chunk["type"] == "tool_start":

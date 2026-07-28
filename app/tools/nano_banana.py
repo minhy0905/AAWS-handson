@@ -113,11 +113,6 @@ def generate_image_with_nano_banana(
         with open(output_path, "wb") as image_file:
             image_file.write(image_data)
 
-        return (
-            "이미지를 생성하고 저장했습니다.\n"
-            "아래 렌더링 태그를 Markdown 이미지 문법이나 sandbox: URL로 변환하지 말고 "
-            "최종 답변에 원문 그대로 포함하세요.\n"
-            f"<Render_Image>{output_path}</Render_Image>"
-        )
+        return f"<Render_Image>{output_path}</Render_Image>"
     except Exception as error:
         return f"[Error] 이미지 생성에 실패했습니다: {error}"
