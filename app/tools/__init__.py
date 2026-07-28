@@ -15,10 +15,16 @@ tools_supervisor = [
 ]
 tools_user = [getuserinfo, saveuserinfo]
 tools_image = [generate_image_with_nano_banana]
+tools_all = (
+    tools_navigator
+    + tools_coder
+    + tools_supervisor
+    + tools_user
+)
 
 __all__ = [
     "ARTIFACT_DIR",
-    "tools_navigator", "tools_coder", "tools_supervisor", "tools_user", "tools_image",
+    "tools_navigator", "tools_coder", "tools_supervisor", "tools_user", "tools_image", "tools_all",
     "get_page_structure", "verify_selectors_with_samples", "browse_web",
     "read_code_file", "edit_code_file", "create_new_file", "write_text_file", "run_python_script", "validate_collected_data",
     "read_image_and_analyze", "web_search_custom_tool",

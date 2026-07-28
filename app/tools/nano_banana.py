@@ -15,6 +15,21 @@ _IMAGE_DIR = os.path.join(_PROJECT_ROOT, "artifacts", "images")
 _DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
 
 
+def _unique_output_path(filename: str) -> str:
+    """기존 이미지를 덮어쓰지 않는 고유한 출력 경로를 만듭니다."""
+    candidate = os.path.abspath(os.path.join(_IMAGE_DIR, filename))
+    if not os.path.exists(candidate):
+        return candidate
+
+    stem, extension = os.path.splitext(filename)
+    return os.path.abspath(
+        os.path.join(
+            _IMAGE_DIR,
+            f"{stem}_{uuid.uuid4().hex[:8]}{extension}",
+        )
+    )
+
+
 def _extract_image_data(content: Any) -> tuple[bytes | None, str]:
     """Gemini/LangChain 응답 블록에서 이미지 bytes와 텍스트를 추출합니다."""
     if not isinstance(content, list):
@@ -89,7 +104,7 @@ def generate_image_with_nano_banana(
         safe_filename += ".png"
 
     os.makedirs(_IMAGE_DIR, exist_ok=True)
-    output_path = os.path.abspath(os.path.join(_IMAGE_DIR, safe_filename))
+    output_path = _unique_output_path(safe_filename)
 
     try:
         image_model = ChatGoogleGenerativeAI(
