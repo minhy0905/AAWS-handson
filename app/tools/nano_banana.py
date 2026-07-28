@@ -73,7 +73,7 @@ def generate_image_with_nano_banana(
     prompt: str,
     filename: str = "",
     model_name: str = _DEFAULT_MODEL,
-) -> dict[str, Any]:
+) -> str:
     """Nano Banana(Gemini 이미지 모델)로 프롬프트에 맞는 이미지를 생성합니다.
 
     생성한 이미지는 artifacts/images 폴더에 PNG 파일로 저장됩니다.
@@ -84,18 +84,10 @@ def generate_image_with_nano_banana(
         model_name: 사용할 Gemini 이미지 생성 모델 ID
     """
     if not prompt.strip():
-        return {
-            "success": False,
-            "data": None,
-            "error": "이미지 생성 프롬프트가 비어 있습니다.",
-        }
+        return "[Error] 이미지 생성 프롬프트가 비어 있습니다."
 
     if not os.getenv("GOOGLE_API_KEY"):
-        return {
-            "success": False,
-            "data": None,
-            "error": "GOOGLE_API_KEY 환경 변수가 설정되어 있지 않습니다.",
-        }
+        return "[Error] GOOGLE_API_KEY 환경 변수가 설정되어 있지 않습니다."
 
     safe_filename = os.path.basename(filename.strip()) if filename else ""
     if not safe_filename:
@@ -115,28 +107,17 @@ def generate_image_with_nano_banana(
         image_data, response_text = _extract_image_data(response.content)
 
         if image_data is None:
-            return {
-                "success": False,
-                "data": {"model_text": response_text},
-                "error": "모델 응답에서 이미지 데이터를 찾지 못했습니다.",
-            }
+            detail = f" 모델 응답: {response_text}" if response_text else ""
+            return f"[Error] 모델 응답에서 이미지 데이터를 찾지 못했습니다.{detail}"
 
         with open(output_path, "wb") as image_file:
             image_file.write(image_data)
 
-        return {
-            "success": True,
-            "data": {
-                "image_path": output_path,
-                "model": model_name,
-                "model_text": response_text,
-                "render_tag": f"<Render_Image>{output_path}</Render_Image>",
-            },
-            "message": "이미지를 생성하고 저장했습니다.",
-        }
+        return (
+            "이미지를 생성하고 저장했습니다.\n"
+            "아래 렌더링 태그를 Markdown 이미지 문법이나 sandbox: URL로 변환하지 말고 "
+            "최종 답변에 원문 그대로 포함하세요.\n"
+            f"<Render_Image>{output_path}</Render_Image>"
+        )
     except Exception as error:
-        return {
-            "success": False,
-            "data": None,
-            "error": f"이미지 생성에 실패했습니다: {error}",
-        }
+        return f"[Error] 이미지 생성에 실패했습니다: {error}"
