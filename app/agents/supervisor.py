@@ -22,6 +22,7 @@ from app.schemas import NavigatorContext, SeniorCoderContext
 
 # 추가 유틸리티 툴스 (Tool Factory)
 from app.tools import tools_supervisor
+from app.tools.analyst import resolve_data_path
 
 # 서빙용 프롬프트
 from app.prompts import SUPERVISOR_SYSTEM_PROMPT
@@ -141,13 +142,24 @@ async def chat_to_analyst(
         data_path: Coder가 생성한 JSON 또는 CSV 결과 파일 경로
         analysis_request: 분석 목표, 강조할 지표, 원하는 시각화에 대한 구체적인 지시
     """
+    try:
+        resolved_data_path = resolve_data_path(data_path)
+    except (FileNotFoundError, ValueError) as error:
+        return (
+            "[ANALYST_HANDOFF_FAILED] "
+            f"{error} 동일하거나 추측한 경로로 Analyst를 재호출하지 마세요."
+        )
+
     prompt = (
         "다음 수집 데이터를 분석하고 시각화하세요.\n\n"
-        f"[Data Path]\n{data_path}\n\n"
+        f"[Data Path]\n{resolved_data_path}\n\n"
         f"[Analysis Request]\n{analysis_request}\n\n"
         "데이터 프로파일링, 차트 생성, Markdown 리포트 저장까지 완료하세요."
     )
-    print(f"\n👨‍💼 [Supervisor] Analyst와 대화 중... (Data: {data_path})")
+    print(
+        "\n👨‍💼 [Supervisor] Analyst와 대화 중... "
+        f"(Data: {resolved_data_path})"
+    )
 
     inner_config = _build_inner_config(config, thread_id_suffix="_analyst")
 

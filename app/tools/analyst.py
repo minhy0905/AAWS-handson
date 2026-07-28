@@ -15,7 +15,49 @@ _CHART_DIR = os.path.join(_ANALYSIS_ROOT, "charts")
 _REPORT_DIR = os.path.join(_ANALYSIS_ROOT, "reports")
 
 
-def _resolve_data_path(filepath: str) -> str:
+def resolve_data_path(filepath: str) -> str:
+    requested_path = filepath.strip().strip("`\"'")
+    artifacts_root = os.path.abspath(_ARTIFACTS_ROOT)
+    code_dir = os.path.join(artifacts_root, "code")
+
+    direct_candidates = []
+    if os.path.isabs(requested_path):
+        direct_candidates.append(os.path.abspath(requested_path))
+    else:
+        direct_candidates.extend(
+            [
+                os.path.abspath(os.path.join(_PROJECT_ROOT, requested_path)),
+                os.path.abspath(
+                    os.path.join(code_dir, os.path.basename(requested_path))
+                ),
+            ]
+        )
+
+    for direct_candidate in direct_candidates:
+        try:
+            is_in_artifacts = (
+                os.path.commonpath([direct_candidate, artifacts_root])
+                == artifacts_root
+            )
+        except ValueError:
+            is_in_artifacts = False
+        if is_in_artifacts and os.path.isfile(direct_candidate):
+            return direct_candidate
+
+    # Recover when the Supervisor passes an example or stale filename:
+    # Coder outputs are isolated in artifacts/code, so select its newest dataset.
+    data_files = []
+    if os.path.isdir(code_dir):
+        for filename in os.listdir(code_dir):
+            data_candidate = os.path.join(code_dir, filename)
+            if (
+                os.path.isfile(data_candidate)
+                and os.path.splitext(filename)[1].lower() in {".json", ".csv"}
+            ):
+                data_files.append(data_candidate)
+    if data_files:
+        return max(data_files, key=os.path.getmtime)
+
     candidate = (
         os.path.abspath(filepath)
         if os.path.isabs(filepath)
@@ -33,7 +75,7 @@ def _resolve_data_path(filepath: str) -> str:
 def _load_dataframe(filepath: str):
     import pandas as pd
 
-    resolved_path = _resolve_data_path(filepath)
+    resolved_path = resolve_data_path(filepath)
     extension = os.path.splitext(resolved_path)[1].lower()
     if extension == ".json":
         with open(resolved_path, "r", encoding="utf-8") as file:
