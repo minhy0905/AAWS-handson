@@ -25,13 +25,21 @@ def setup_scenario_context(scenario_file: str, project_root: str, prefix: str):
         "log_path": log_output_path
     }
 
-async def stream_agent_execution(agent, mission_prompt: str, log_output_path: str) -> str:
+async def stream_agent_execution(
+    agent,
+    mission_prompt: str,
+    log_output_path: str,
+    recursion_limit: int = 100,
+) -> str:
     """
     LangChain 에이전트의 astream_events를 수신하여 터미널 및 로그 파일에 스트리밍 출력하고
     최종 메시지(final_message)를 반환합니다.
     """
     thread_id = f"scenario_test_{uuid.uuid4().hex[:8]}"
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": recursion_limit,
+    }
     final_message = ""
 
     async for event in agent.astream_events(
