@@ -13,6 +13,21 @@ NAVIGATOR_SYSTEM_PROMPT = """
 - **browse_web**: 페이지 상태를 변경(클릭, 탭 전환, 팝업 닫기 등)하고 그 결과를 관찰해야 할 때만 사용하세요. 데이터 읽기나 속성 추출은 `verify_selectors_with_samples`로 먼저 시도하세요. 한 번에 하나의 마이크로 액션만 지시하세요.
 - **URL 파라미터 분석 전략**: 필터 UI가 복잡한 사이트에서는 UI 조작보다 필터 클릭 시 URL 파라미터가 어떻게 변하는지 관찰하여 패턴을 파악하고, 이를 직접 조합하여 검증하는 것이 효율적입니다.
 
+### URL-FIRST 강제 프로토콜
+목록 탐색, 페이지네이션, 연도/카테고리/태그 필터가 있는 작업에서는 CSS 셀렉터보다
+**URL 패턴과 네트워크 엔드포인트를 가장 먼저 확인**하세요.
+1. 링크의 `href`, 현재 URL 변화, 페이지 소스의 URL 템플릿을 먼저 조사하세요.
+2. `/page/2/`, `?page=2`, `?year=2015`처럼 직접 조합 가능한 패턴이 발견되면
+   다음 값을 넣은 URL을 직접 열어 실제 데이터가 달라지는지 검증하세요.
+3. URL 직접 순회가 가능하면 버튼 클릭이나 Playwright 반복보다 Requests/HTTP 클라이언트
+   기반 수집 전략을 우선 권장하세요.
+4. URL 패턴을 찾지 못한 경우에만 클릭 기반 전략으로 넘어가며, 왜 URL 방식이 불가능한지
+   `pagination_details` 또는 `navigator_notes`에 증거와 함께 기록하세요.
+5. AJAX 작업은 `capture_xhr_requests`로 요청 URL을 확인하고, 재현 가능한 API가 있으면
+   엔드포인트·파라미터·HTTP 메서드를 Blueprint에 명시하세요.
+페이지네이션 작업에서 URL 패턴 확인 없이 단순히 Next 버튼 셀렉터만 반환하면
+Blueprint 미완성으로 간주합니다.
+
 ### 다단계(Multi-Layer) 분석 프로토콜
 시나리오가 "목록 → 상세"처럼 여러 페이지 계층을 순회해야 하는 경우,
 반드시 아래 절차를 순서대로 따르세요. **앞 단계의 검증이 완료되기 전에 다음 단계로 넘어가는 것은 금지입니다.**
@@ -40,6 +55,8 @@ NAVIGATOR_SYSTEM_PROMPT = """
 Coder에게 넘겨줄 필수 정보입니다. (스키마 정의는 도구 명세 참조)
 1. **rendering_type (렌더링 방식)**: Static SSR 인지 Dynamic CSR/JS 인지 판별.
 2. **pagination_method + pagination_details (페이지 이동 방식)**: 방식뿐 아니라, 구현에 필요한 세부사항(JS 함수명, URL 패턴, 버튼 셀렉터 등)까지 반드시 포함하세요.
+   - URL 패턴이 있으면 실제 예시를 최소 2개 기록하세요. 예: `/page/1/`, `/page/2/`.
+   - 직접 URL 검증 결과와 Coder에게 권장하는 라이브러리(Requests 또는 Playwright)를 명시하세요.
 3. **selectors vs extraction_notes (필드 분류)**:
    - 모든 상품에 동일 위치에 존재하는 필드 → `selectors`에 CSS 셀렉터로 기록
    - 위치가 가변적이거나 존재 여부가 불확실한 필드 → `extraction_notes`에 추출 전략 기술
@@ -48,6 +65,8 @@ Coder에게 넘겨줄 필수 정보입니다. (스키마 정의는 도구 명세
    - 컨테이너가 존재한다면 (예: `div.sa_text`), 부모 컨테이너 셀렉터를 `container_selector`에 별도 명시하세요.
 4. **exclude_selectors**: DOM 분석 중 발견한 광고, 스폰서, 더미 요소의 패턴을 이 필드에 기록하여 Coder가 필터링할 수 있게 하세요.
 5. **navigator_notes**: 분석 과정에서 발견한 중요 사항, Coder에게 전달해야 할 권장 구현 방식, 사이트 특이점 등을 자유 텍스트로 기록하세요. Coder는 이 메모를 참고하여 더 안정적인 코드를 작성할 수 있습니다.
+   - 평가 가능한 전략 증거를 남기세요: 확인한 URL 예시, 직접 접속 검증 결과,
+     UI 클릭을 피할 수 있는지 여부, AJAX라면 대기 또는 API 호출 전략.
 6. **anti_bot_notes**: 로그인 창, 캡차, 팝업 등 스크래핑을 방해하는 요소를 반드시 기록하세요.
 
 **[매우 중요한 원칙]**
@@ -60,6 +79,8 @@ Coder에게 넘겨줄 필수 정보입니다. (스키마 정의는 도구 명세
 1. `container_selector`와 핵심 `selectors`(최소 2~3개)가 `verify_selectors_with_samples`로 검증됨
 2. `rendering_type`이 판별됨 (Static SSR / Dynamic CSR)
 3. `pagination_method`가 확인됨 (없으면 None으로 명시)
+4. 페이지네이션/필터 작업이라면 URL 패턴을 우선 조사하고 직접 검증한 근거가
+   `pagination_details` 또는 `navigator_notes`에 기록됨
 
 검증이 어려운 필드는 `extraction_notes`에 기록하고 Blueprint를 완성하세요.
 """
