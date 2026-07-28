@@ -37,6 +37,27 @@ GLOBAL_NAVIGATOR_AGENT = create_navigator_agent()
 GLOBAL_CODER_AGENT = create_coder_agent()
 GLOBAL_ANALYST_AGENT = create_analyst_agent()
 
+def _build_inner_config(
+    config: RunnableConfig | None,
+    thread_id_suffix: str = "",
+) -> RunnableConfig:
+    """Clone worker config and suppress duplicate nested LLM token streaming."""
+    inner_config = config.copy() if config else {}
+    inner_config["configurable"] = inner_config.get("configurable", {}).copy()
+
+    parent_thread_id = inner_config["configurable"].get(
+        "thread_id", "default_thread"
+    )
+    inner_config["configurable"]["thread_id"] = (
+        f"{parent_thread_id}{thread_id_suffix}"
+    )
+
+    tags = list(inner_config.get("tags", []))
+    if "exclude_from_stream" not in tags:
+        tags.append("exclude_from_stream")
+    inner_config["tags"] = tags
+    return inner_config
+
 # =========================================================
 # 2. 분리된(Context Isolated) Handoff 도구 (Agents as Tools 패턴)
 # =========================================================
@@ -66,9 +87,7 @@ async def chat_to_navigator(request: str, runtime: ToolRuntime, config: Runnable
     
     try:
         # FastAPI/UI로 이벤트를 전달하기 위해 원본 config(callbacks 포함)를 그대로 전달해야 합니다.
-        inner_config = config.copy() if config else {}
-        inner_config["configurable"] = inner_config.get("configurable", {}).copy()
-        inner_config["configurable"]["thread_id"] = config.get("configurable", {}).get("thread_id", "default_thread")
+        inner_config = _build_inner_config(config)
         
         result = await GLOBAL_NAVIGATOR_AGENT.ainvoke(
             {"messages": [("user", prompt)]},
@@ -97,9 +116,7 @@ async def chat_to_coder(task_description: str, runtime: ToolRuntime, config: Run
         
     print(f"\n👨‍💼 [Supervisor] Coder와 대화 중...")
     
-    inner_config = config.copy() if config else {}
-    inner_config["configurable"] = inner_config.get("configurable", {}).copy()
-    inner_config["configurable"]["thread_id"] = config.get("configurable", {}).get("thread_id", "default_thread")
+    inner_config = _build_inner_config(config)
     
     result = await GLOBAL_CODER_AGENT.ainvoke(
         {"messages": [("user", prompt)]},
@@ -132,12 +149,7 @@ async def chat_to_analyst(
     )
     print(f"\n👨‍💼 [Supervisor] Analyst와 대화 중... (Data: {data_path})")
 
-    inner_config = config.copy() if config else {}
-    inner_config["configurable"] = inner_config.get("configurable", {}).copy()
-    parent_thread_id = inner_config["configurable"].get(
-        "thread_id", "default_thread"
-    )
-    inner_config["configurable"]["thread_id"] = f"{parent_thread_id}_analyst"
+    inner_config = _build_inner_config(config, thread_id_suffix="_analyst")
 
     result = await GLOBAL_ANALYST_AGENT.ainvoke(
         {"messages": [("user", prompt)]},

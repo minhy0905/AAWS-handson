@@ -38,6 +38,16 @@ agent_options = {a["name"]: a["description"] for a in AGENT_REGISTRY}
 SANDBOX_IMAGE_PATTERN = re.compile(
     r"!\[[^\]]*\]\((sandbox:/[^)]+)\)"
 )
+IMAGE_EXTENSIONS = r"(?:png|jpe?g|gif|webp|bmp)"
+RENDER_IMAGE_PATTERN = re.compile(
+    rf"<Render_Image>\s*(?P<paired>[^<\r\n]+?\.{IMAGE_EXTENSIONS})"
+    rf"\s*</Render_Image>"
+    rf"|<Render_Image\s+(?:path|src)=[\"'](?P<attribute>[^\"']+?\.{IMAGE_EXTENSIONS})[\"']\s*/>"
+    rf"|<Render_Image>\s*(?P<unclosed>[^<\r\n]+?\.{IMAGE_EXTENSIONS})(?=\s|$|<)"
+    rf"|!\[[^\]]*\]\((?P<sandbox>sandbox:/[^)]+?\.{IMAGE_EXTENSIONS})\)"
+    rf"|(?P<empty><Render_Image\s*/>)",
+    re.IGNORECASE,
+)
 
 
 def sanitize_streaming_content(content):
@@ -45,26 +55,58 @@ def sanitize_streaming_content(content):
     return SANDBOX_IMAGE_PATTERN.sub("🖼️ 이미지 렌더링 준비 중...", content)
 
 
+def resolve_image_path(image_path):
+    """모델이 반환한 경로를 현재 실행 환경의 실제 이미지 경로로 정규화합니다."""
+    cleaned_path = image_path.strip().strip("`\"'")
+    if cleaned_path.startswith("sandbox:"):
+        cleaned_path = cleaned_path[len("sandbox:"):]
+
+    candidates = [cleaned_path]
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    if not os.path.isabs(cleaned_path):
+        candidates.append(os.path.join(project_root, cleaned_path))
+
+    normalized_path = cleaned_path.replace("\\", "/")
+    artifacts_marker = "/artifacts/"
+    if artifacts_marker in normalized_path:
+        artifact_relative_path = normalized_path.split(artifacts_marker, 1)[1]
+        candidates.append(
+            os.path.join(project_root, "artifacts", *artifact_relative_path.split("/"))
+        )
+
+    for candidate in candidates:
+        absolute_candidate = os.path.abspath(candidate)
+        if os.path.isfile(absolute_candidate):
+            return absolute_candidate
+    return os.path.abspath(candidates[-1])
+
+
 def render_message_content(content):
     """
-    <Render_Image> 태그와 sandbox 로컬 이미지 문법을 파싱하여
+    정상/축약/미완성 <Render_Image> 태그와 sandbox 이미지 문법을 파싱하여
     텍스트와 이미지를 순서대로 렌더링합니다.
     """
-    pattern = re.compile(
-        r"<Render_Image>(.*?)</Render_Image>"
-        rf"|{SANDBOX_IMAGE_PATTERN.pattern}",
-        re.DOTALL,
-    )
-
     cursor = 0
-    for match in pattern.finditer(content):
+    for match in RENDER_IMAGE_PATTERN.finditer(content):
         text_part = content[cursor:match.start()]
         if text_part.strip():
             st.markdown(text_part)
 
-        image_path = (match.group(1) or match.group(2) or "").strip()
-        if image_path.startswith("sandbox:"):
-            image_path = image_path[len("sandbox:"):]
+        if match.group("empty"):
+            st.warning("이미지 태그에 경로가 없습니다.")
+            cursor = match.end()
+            continue
+
+        raw_image_path = next(
+            (
+                match.group(group_name)
+                for group_name in ("paired", "attribute", "unclosed", "sandbox")
+                if match.group(group_name)
+            ),
+            "",
+        )
+        image_path = resolve_image_path(raw_image_path)
 
         if os.path.isfile(image_path):
             st.image(image_path, caption=os.path.basename(image_path))

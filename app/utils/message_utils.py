@@ -32,9 +32,16 @@ def normalize_content(content) -> str:
         text_parts = []
         for item in content:
             if isinstance(item, dict):
-                if item.get("type") == "text":
+                block_type = str(item.get("type", "")).lower()
+                if (
+                    item.get("thought") is True
+                    or block_type in {"thought", "thinking", "reasoning"}
+                ):
+                    continue
+
+                if block_type == "text":
                     text_parts.append(item.get("text", ""))
-                elif item.get("type") == "image_url":
+                elif block_type == "image_url":
                     url = item.get("image_url", {}).get("url", "")
                     if url.startswith("data:"):
                         text_parts.append("[이미지 (Base64)]")
