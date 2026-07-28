@@ -44,6 +44,7 @@ from app.utils.message_utils import sanitize_text, normalize_content
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LLMOps_Server")
+DEFAULT_RECURSION_LIMIT = int(os.getenv("AGENT_RECURSION_LIMIT", "100"))
 
 # --- Schemas ---
 class UserInput(BaseModel):
@@ -57,6 +58,17 @@ class ChatMessage(BaseModel):
     type: str
     content: str
 
+
+def build_agent_config(thread_id: Optional[str] = None) -> Dict[str, Any]:
+    """서버에서 실행하는 모든 LangGraph 에이전트의 공통 설정을 생성합니다."""
+    config: Dict[str, Any] = {
+        "recursion_limit": DEFAULT_RECURSION_LIMIT,
+    }
+    if thread_id:
+        config["configurable"] = {"thread_id": thread_id}
+    return config
+
+
 # --- Router Factory ---
 def create_agent_router(agent_executor, prefix: str, tags: list = None) -> APIRouter:
     """
@@ -67,7 +79,7 @@ def create_agent_router(agent_executor, prefix: str, tags: list = None) -> APIRo
 
     async def _stream_generator(input_data: StreamInput) -> AsyncGenerator[str, None]:
         try:
-            config = {"configurable": {"thread_id": input_data.thread_id}} if input_data.thread_id else {}
+            config = build_agent_config(input_data.thread_id)
             
             # LangGraph astream_events (v2)
             async for event in agent_executor.astream_events(
@@ -111,7 +123,7 @@ def create_agent_router(agent_executor, prefix: str, tags: list = None) -> APIRo
     @router.post("/invoke", response_model=ChatMessage)
     async def invoke(input_data: UserInput):
         try:
-            config = {"configurable": {"thread_id": input_data.thread_id}} if input_data.thread_id else {}
+            config = build_agent_config(input_data.thread_id)
             
             # invoke returns the final state
             result = await agent_executor.ainvoke(
