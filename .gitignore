@@ -28,3 +28,4 @@ agent_cost_log.json
 .gemini/
 my_quotes_profile/
 artifacts/images/
+artifacts/analysis/

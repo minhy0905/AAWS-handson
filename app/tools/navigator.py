@@ -105,6 +105,77 @@ async def verify_selectors_with_samples(url: str, selectors_json: str) -> str:
     except Exception as e:
         return f"[Error] 브라우저 검증 중 오류: {e}"
 
+
+@tool(parse_docstring=True)
+async def capture_xhr_requests(
+    url: str,
+    click_selector: str,
+    wait_seconds: float = 3.0,
+) -> dict:
+    """Playwright로 요소를 클릭하고 그로 인해 발생한 XHR/fetch 요청을 수집합니다.
+
+    browser-use를 거치지 않으므로 Codespaces의 CDP 브라우저 시작 문제와 무관하게
+    AJAX 엔드포인트를 조사할 수 있습니다.
+
+    Args:
+        url: 조사할 웹페이지 URL
+        click_selector: 클릭할 요소의 CSS 셀렉터
+        wait_seconds: 클릭 후 네트워크 요청을 기다릴 시간(초)
+    """
+    captured_requests = []
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+
+            def record_request(request):
+                if request.resource_type in ("xhr", "fetch"):
+                    captured_requests.append(
+                        {
+                            "method": request.method,
+                            "resource_type": request.resource_type,
+                            "url": request.url,
+                        }
+                    )
+
+            page.on("request", record_request)
+            await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            # 초기 페이지 로드 요청은 제외하고 클릭으로 발생한 요청만 수집합니다.
+            await page.wait_for_timeout(500)
+            captured_requests.clear()
+            await page.locator(click_selector).first.click(timeout=15000)
+            await page.wait_for_timeout(max(0, int(wait_seconds * 1000)))
+            await browser.close()
+
+        unique_requests = []
+        seen = set()
+        for request in captured_requests:
+            key = (request["method"], request["url"])
+            if key not in seen:
+                seen.add(key)
+                unique_requests.append(request)
+
+        return {
+            "success": True,
+            "data": {
+                "page_url": url,
+                "click_selector": click_selector,
+                "request_count": len(unique_requests),
+                "requests": unique_requests,
+            },
+        }
+    except Exception as error:
+        return {
+            "success": False,
+            "data": None,
+            "error": f"XHR/fetch 요청 수집에 실패했습니다: {error}",
+        }
+
+
 @tool(parse_docstring=True)
 async def browse_web(runtime: ToolRuntime[NavigatorContext], url: str, instruction: str, purpose: str = "", context: str = "") -> str:
     """동적 인터랙션 및 시각적 검증이 필요할 때 실제 브라우저로 웹을 제어합니다.

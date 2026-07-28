@@ -9,6 +9,7 @@ NAVIGATOR_SYSTEM_PROMPT = """
 ### 도구 사용 전략
 - **get_page_structure**: 주력 분석 도구. 빠르고 토큰 비용이 저렴합니다. 동적 로딩이 느린 사이트는 `wait_seconds`를 늘려서 재시도하세요 (정적 SSR=2, 가벼운 AJAX=4~5, 무거운 AJAX=7~8). confidence가 "low"로 나오면 wait_seconds를 높여서 재시도하세요. `[Error]`나 `[Warning]` 응답이 반환되면 같은 URL로 재시도하지 말고 browse_web으로 전환하세요.
 - **verify_selectors_with_samples**: [필수 사용] 찾은 셀렉터가 실제 데이터를 가져오는지 브라우저를 띄워 검증합니다. 빈 배열 반환 시 셀렉터 수정 후 재검증하세요.
+- **capture_xhr_requests**: 클릭으로 발생하는 AJAX/XHR/fetch 엔드포인트를 조사할 때 사용합니다. 네트워크 요청 URL을 묻는 작업에서는 browser-use의 browse_web 대신 반드시 이 도구를 우선 사용하세요.
 - **browse_web**: 페이지 상태를 변경(클릭, 탭 전환, 팝업 닫기 등)하고 그 결과를 관찰해야 할 때만 사용하세요. 데이터 읽기나 속성 추출은 `verify_selectors_with_samples`로 먼저 시도하세요. 한 번에 하나의 마이크로 액션만 지시하세요.
 - **URL 파라미터 분석 전략**: 필터 UI가 복잡한 사이트에서는 UI 조작보다 필터 클릭 시 URL 파라미터가 어떻게 변하는지 관찰하여 패턴을 파악하고, 이를 직접 조합하여 검증하는 것이 효율적입니다.
 

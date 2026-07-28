@@ -17,6 +17,7 @@ load_dotenv(override=True)
 # 워커 에이전트들 임포트 — app/ 패키지 기반
 from app.agents.navigator import create_navigator_agent
 from app.agents.coder import create_coder_agent
+from app.agents.analyst import create_analyst_agent
 from app.schemas import NavigatorContext, SeniorCoderContext
 
 # 추가 유틸리티 툴스 (Tool Factory)
@@ -34,6 +35,7 @@ from browser_use import Agent, Browser, ChatGoogle
 # =========================================================
 GLOBAL_NAVIGATOR_AGENT = create_navigator_agent()
 GLOBAL_CODER_AGENT = create_coder_agent()
+GLOBAL_ANALYST_AGENT = create_analyst_agent()
 
 # =========================================================
 # 2. 분리된(Context Isolated) Handoff 도구 (Agents as Tools 패턴)
@@ -107,6 +109,43 @@ async def chat_to_coder(task_description: str, runtime: ToolRuntime, config: Run
     return result["messages"][-1].content
 
 
+@tool(parse_docstring=True)
+async def chat_to_analyst(
+    data_path: str,
+    analysis_request: str,
+    runtime: ToolRuntime,
+    config: RunnableConfig,
+) -> str:
+    """수집된 JSON/CSV를 분석하고 차트와 Markdown 리포트를 생성하도록 Analyst에게 지시합니다.
+
+    Coder가 데이터 파일 생성을 완료한 뒤 이 도구를 호출하세요.
+
+    Args:
+        data_path: Coder가 생성한 JSON 또는 CSV 결과 파일 경로
+        analysis_request: 분석 목표, 강조할 지표, 원하는 시각화에 대한 구체적인 지시
+    """
+    prompt = (
+        "다음 수집 데이터를 분석하고 시각화하세요.\n\n"
+        f"[Data Path]\n{data_path}\n\n"
+        f"[Analysis Request]\n{analysis_request}\n\n"
+        "데이터 프로파일링, 차트 생성, Markdown 리포트 저장까지 완료하세요."
+    )
+    print(f"\n👨‍💼 [Supervisor] Analyst와 대화 중... (Data: {data_path})")
+
+    inner_config = config.copy() if config else {}
+    inner_config["configurable"] = inner_config.get("configurable", {}).copy()
+    parent_thread_id = inner_config["configurable"].get(
+        "thread_id", "default_thread"
+    )
+    inner_config["configurable"]["thread_id"] = f"{parent_thread_id}_analyst"
+
+    result = await GLOBAL_ANALYST_AGENT.ainvoke(
+        {"messages": [("user", prompt)]},
+        config=inner_config,
+    )
+    return result["messages"][-1].content
+
+
 # =========================================================
 # 3. Supervisor Agent 구성
 # =========================================================
@@ -117,7 +156,7 @@ supervisor_checkpointer = InMemorySaver()
 supervisor_agent = create_agent(
     model=supervisor_model,
     system_prompt=SUPERVISOR_SYSTEM_PROMPT,
-    tools=[chat_to_navigator, chat_to_coder] + tools_supervisor,
+    tools=[chat_to_navigator, chat_to_coder, chat_to_analyst] + tools_supervisor,
     checkpointer=supervisor_checkpointer,
     name="supervisor_agent"
 )
