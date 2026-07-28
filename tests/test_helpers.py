@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import uuid
 from langchain_core.messages import HumanMessage
@@ -11,10 +12,21 @@ def _content_to_text(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(
-            item.get("text", "") if isinstance(item, dict) else str(item)
-            for item in content
-        )
+        text_parts = []
+        for item in content:
+            if not isinstance(item, dict):
+                text_parts.append(str(item))
+                continue
+            block_type = str(item.get("type", "")).lower()
+            if item.get("thought") is True or block_type in {
+                "thought",
+                "thinking",
+                "reasoning",
+            }:
+                continue
+            if block_type in ("", "text"):
+                text_parts.append(item.get("text", ""))
+        return "".join(text_parts)
     return str(content) if content is not None else ""
 
 
@@ -32,6 +44,16 @@ def _last_message_text(output) -> str:
         if text:
             return text
     return ""
+
+
+def _extract_python_code(report: str) -> str:
+    """최종 보고서의 Python 코드 블록을 평가용 코드로 분리합니다."""
+    code_blocks = re.findall(
+        r"```(?:python|py)\s*\n(.*?)```",
+        report,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    return "\n\n".join(block.strip() for block in code_blocks if block.strip())
 
 
 def setup_scenario_context(scenario_file: str, project_root: str, prefix: str):
@@ -126,10 +148,11 @@ async def evaluate_and_log(scenario: Scenario, json_output_path: str, final_mess
     print("\n✅ 시나리오 에이전트 수행 완료! 평가(Evaluator) 단계로 넘어갑니다...")
     print("-" * 60)
     
+    agent_code = _extract_python_code(final_message) or final_message
     eval_result = await evaluate_scenario_result(
         scenario=scenario,
         json_output_path=json_output_path,
-        agent_code=final_message,
+        agent_code=agent_code,
         agent_report=final_message
     )
     

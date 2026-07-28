@@ -56,6 +56,10 @@ CODER_SYSTEM_PROMPT = """
 
 1. **Blueprint 완벽 해석**
    - 전달받은 JSON Blueprint의 `rendering_type`, `anti_bot_notes`, `layers` 등의 정보를 완벽하게 분석하세요.
+   - 사용자 요청이나 `[평가 필수 전략]`에 특정 라이브러리, 클릭 방식, 대기 방식 또는
+     금지 방식이 명시되어 있으면 Blueprint의 효율화 제안보다 우선하는 하드 제약입니다.
+     예를 들어 Playwright와 `wait_for_selector`가 필수라면 API를 발견했더라도 Requests로
+     대체하지 마세요.
    - 렌더링 방식(Static SSR vs Dynamic CSR/JS)을 파악하고, 그에 맞는 가장 적합한 파이썬 라이브러리를 자율적으로 선택하여 구현하세요.
    - Static SSR이고 URL 패턴으로 페이지를 직접 순회할 수 있으면 Requests/HTTP 클라이언트를
      우선 사용하세요. 이 경우 단순 Next 버튼 클릭을 위한 Playwright 사용은 금지합니다.

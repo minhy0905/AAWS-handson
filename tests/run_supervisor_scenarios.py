@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import json
 from dotenv import load_dotenv
 
 # Project Root Setup
@@ -52,6 +53,14 @@ async def run_scenario(scenario_file: str):
     
     [시나리오 문서]
     {scenario.prompt}
+
+    [필수 출력 스키마]
+    {json.dumps(scenario.expected_schema, ensure_ascii=False, indent=2)}
+
+    [평가 필수 전략 — 선택 사항이 아닌 하드 제약]
+    {json.dumps(scenario.evaluation_criteria, ensure_ascii=False, indent=2)}
+    Navigator, Coder, Analyst에게 관련 기준을 빠뜨리지 말고 전달하고,
+    최종 코드와 보고서에서 각 기준을 어떻게 충족했는지 증거를 남기세요.
     """
 
     print("⏳ 에이전트 수행 중 (상당한 시간이 소요될 수 있습니다)...")
