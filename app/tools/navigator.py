@@ -132,13 +132,41 @@ async def browse_web(runtime: ToolRuntime[NavigatorContext], url: str, instructi
     user_browser = getattr(runtime.context, "shared_browser", None)
     
     if user_browser:
-        agent = Agent(task=task, llm=llm, browser=user_browser, calculate_cost=True)
-        history = await agent.run(max_steps=15)
+        try:
+            agent = Agent(
+                task=task,
+                llm=llm,
+                browser=user_browser,
+                calculate_cost=True,
+            )
+            history = await agent.run(max_steps=15)
+        except Exception as shared_browser_error:
+            print(
+                "⚠️ [browse_web] 공유 GUI 브라우저 실행 실패. "
+                f"headless 브라우저로 재시도합니다: {shared_browser_error}"
+            )
+            fallback_browser = Browser(
+                headless=True,
+                disable_security=True,
+                keep_alive=False,
+            )
+            try:
+                fallback_agent = Agent(
+                    task=task,
+                    llm=llm,
+                    browser=fallback_browser,
+                    calculate_cost=True,
+                )
+                history = await fallback_agent.run(max_steps=15)
+            finally:
+                await fallback_browser.stop()
     else:
         tb = Browser(headless=True)
-        agent = Agent(task=task, llm=llm, browser=tb, calculate_cost=True)
-        history = await agent.run(max_steps=15)
-        await tb.stop()
+        try:
+            agent = Agent(task=task, llm=llm, browser=tb, calculate_cost=True)
+            history = await agent.run(max_steps=15)
+        finally:
+            await tb.stop()
     
     # 비용 기록
     _cost_tracker.record_usage(instruction[:50], history.usage)
